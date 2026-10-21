@@ -146,6 +146,31 @@ nav.tabs .services{border-top:1px solid var(--line)}
 tr.grp td{background:var(--surface2); font:800 14px var(--f-display); color:var(--accent); padding-top:12px}
 .topic-intro{display:grid; gap:4px}
 .topic-intro .eyebrow{color:var(--accent)}
+
+.ai-select-btn{position:absolute; z-index:60; background:var(--accent); color:var(--accent-ink); font:700 13px var(--f-body); padding:7px 12px; border-radius:20px; box-shadow:0 4px 14px rgba(0,0,0,.25); cursor:pointer; user-select:none}
+.ai-select-btn:hover{filter:brightness(1.08)}
+
+.ai-panel{position:fixed; z-index:70; right:18px; bottom:18px; top:18px; width:min(420px, calc(100vw - 36px)); background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:0 12px 40px rgba(0,0,0,.35); display:flex; flex-direction:column; overflow:hidden}
+.ai-panel-head{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:var(--surface2); font:800 14px var(--f-display); color:var(--accent)}
+.ai-x{background:none; border:0; color:var(--muted); font-size:16px; cursor:pointer; padding:2px 6px}
+.ai-x:hover{color:var(--ink)}
+.ai-selected{margin:12px 14px 0; padding:10px 12px; background:var(--surface2); border-left:3px solid var(--accent); border-radius:6px; font:14px/1.45 var(--f-body); color:var(--muted); max-height:120px; overflow:auto}
+.ai-body{flex:1; overflow:auto; padding:12px 14px; font:14.5px/1.6 var(--f-body); color:var(--ink); display:flex; flex-direction:column; gap:12px}
+.ai-msg.user{align-self:flex-end; background:var(--accent); color:var(--accent-ink); padding:8px 12px; border-radius:10px 10px 2px 10px; max-width:85%}
+.ai-msg.assistant{white-space:pre-wrap}
+.ai-msg.assistant p{margin:0 0 8px}
+.ai-msg.error{color:var(--upd)}
+.ai-loading{color:var(--muted); font-style:italic}
+.ai-input-row{display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--line)}
+.ai-input-row input{flex:1; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:14px var(--f-body)}
+.ai-input-row input:focus{outline:2px solid var(--accent)}
+
+.ai-modal{position:fixed; inset:0; z-index:80; background:rgba(0,0,0,.5); display:flex; align-items:center; justify-content:center; padding:16px}
+.ai-modal-card{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:20px; max-width:440px; width:100%}
+.ai-modal-card h3{margin:0 0 8px; font:800 16px var(--f-display); color:var(--accent)}
+.ai-modal-card p{margin:0 0 12px; font:13px/1.5 var(--f-body); color:var(--muted)}
+.ai-modal-card input{width:100%; box-sizing:border-box; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:14px var(--f-mono); margin-bottom:14px}
+.ai-modal-actions{display:flex; justify-content:flex-end; gap:8px}
 </style>
 
 <header class="top">
@@ -157,10 +182,38 @@ tr.grp td{background:var(--surface2); font:800 14px var(--f-display); color:var(
     </div>
     <div class="controls">
       <button class="btn" id="recallBtn" aria-pressed="false">Recall mode</button>
+      <button class="btn" id="aiSettingsBtn" title="Set your Anthropic API key">AI settings</button>
       <div class="legend"><span><span class="tag add">SAA+</span> added for the exam</span> <span><span class="tag upd">Updated</span> changed since your course</span> <span><span class="tag src">from …</span> merged from another file</span></div>
     </div>
   </div>
 </header>
+
+<div id="aiSelectBtn" class="ai-select-btn" hidden>✨ Explain with AI</div>
+
+<div id="aiPanel" class="ai-panel" hidden>
+  <div class="ai-panel-head">
+    <span>AI Explain</span>
+    <button id="aiPanelClose" class="ai-x" aria-label="Close">✕</button>
+  </div>
+  <div id="aiSelectedText" class="ai-selected"></div>
+  <div id="aiBody" class="ai-body"></div>
+  <div class="ai-input-row">
+    <input id="aiFollowup" type="text" placeholder="Ask a follow-up…">
+    <button id="aiFollowupBtn" class="btn">Ask</button>
+  </div>
+</div>
+
+<div id="aiKeyModal" class="ai-modal" hidden>
+  <div class="ai-modal-card">
+    <h3>Anthropic API key</h3>
+    <p>This site has no backend, so your key is stored only in this browser's local storage and sent directly from your browser to Anthropic's API. Never share a key you don't want exposed this way.</p>
+    <input id="aiKeyInput" type="password" placeholder="sk-ant-...">
+    <div class="ai-modal-actions">
+      <button id="aiKeyClear" class="btn">Clear key</button>
+      <button id="aiKeySave" class="btn">Save</button>
+    </div>
+  </div>
+</div>
 
 <nav class="tabs" aria-label="Topics and services">
   <div class="wrap topics" id="topicRow" role="tablist" aria-label="Topics"></div>
@@ -3934,4 +3987,125 @@ document.addEventListener("keydown", e => {
     e.preventDefault(); e.target.classList.toggle("shown");
   }
 });
+
+/* AI explain */
+const AI_KEY_STORAGE = "saa-guide-anthropic-key";
+const AI_MODEL = "claude-sonnet-5-5";
+const selectBtn = document.getElementById("aiSelectBtn");
+const aiPanel = document.getElementById("aiPanel");
+const aiSelectedText = document.getElementById("aiSelectedText");
+const aiBody = document.getElementById("aiBody");
+const aiFollowup = document.getElementById("aiFollowup");
+const aiFollowupBtn = document.getElementById("aiFollowupBtn");
+const aiPanelClose = document.getElementById("aiPanelClose");
+const aiKeyModal = document.getElementById("aiKeyModal");
+const aiKeyInput = document.getElementById("aiKeyInput");
+
+let aiHistory = [];
+let aiSelection = "";
+
+function getAiKey(){ try { return localStorage.getItem(AI_KEY_STORAGE) || ""; } catch(e){ return ""; } }
+function setAiKey(k){ try { if (k) localStorage.setItem(AI_KEY_STORAGE, k); else localStorage.removeItem(AI_KEY_STORAGE); } catch(e){} }
+
+function openKeyModal(){ aiKeyInput.value = getAiKey(); aiKeyModal.hidden = false; aiKeyInput.focus(); }
+document.getElementById("aiSettingsBtn").addEventListener("click", openKeyModal);
+document.getElementById("aiKeySave").addEventListener("click", () => {
+  setAiKey(aiKeyInput.value.trim());
+  aiKeyModal.hidden = true;
+});
+document.getElementById("aiKeyClear").addEventListener("click", () => {
+  aiKeyInput.value = ""; setAiKey("");
+});
+aiKeyModal.addEventListener("click", e => { if (e.target === aiKeyModal) aiKeyModal.hidden = true; });
+
+function hideSelectBtn(){ selectBtn.hidden = true; }
+
+document.addEventListener("mouseup", e => {
+  if (aiPanel.contains(e.target) || e.target === selectBtn) return;
+  const sel = window.getSelection();
+  const text = sel ? sel.toString().trim() : "";
+  if (!text || text.length < 2){ hideSelectBtn(); return; }
+  const range = sel.getRangeAt(0);
+  const rect = range.getBoundingClientRect();
+  if (!rect || (rect.width === 0 && rect.height === 0)){ hideSelectBtn(); return; }
+  aiSelection = text;
+  selectBtn.style.left = Math.max(8, rect.left + window.scrollX) + "px";
+  selectBtn.style.top = (rect.top + window.scrollY - 36) + "px";
+  selectBtn.hidden = false;
+});
+document.addEventListener("mousedown", e => {
+  if (e.target !== selectBtn) hideSelectBtn();
+});
+
+selectBtn.addEventListener("click", () => {
+  const text = aiSelection;
+  hideSelectBtn();
+  openAiPanel(text);
+});
+
+function openAiPanel(selectedText){
+  aiSelectedText.textContent = selectedText;
+  aiBody.innerHTML = "";
+  aiHistory = [];
+  aiPanel.hidden = false;
+  askAi(`Explain this AWS SAA-C03 study note in detail, including why it matters for the exam and a concrete example:\n\n"${selectedText}"`, selectedText);
+}
+aiPanelClose.addEventListener("click", () => { aiPanel.hidden = true; });
+
+function addMsg(role, text){
+  const div = document.createElement("div");
+  div.className = "ai-msg " + role;
+  div.textContent = text;
+  aiBody.appendChild(div);
+  aiBody.scrollTop = aiBody.scrollHeight;
+  return div;
+}
+
+async function askAi(prompt, displayAsUser){
+  const key = getAiKey();
+  if (!key){ openKeyModal(); return; }
+  if (displayAsUser) addMsg("user", displayAsUser);
+  const loading = addMsg("assistant ai-loading", "Thinking…");
+  aiHistory.push({ role: "user", content: prompt });
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: AI_MODEL,
+        max_tokens: 1024,
+        messages: aiHistory
+      })
+    });
+    const data = await res.json();
+    loading.remove();
+    if (!res.ok){
+      const msg = (data && data.error && data.error.message) || res.statusText;
+      addMsg("assistant error", "Error: " + msg);
+      aiHistory.pop();
+      return;
+    }
+    const text = (data.content || []).map(c => c.text || "").join("\n").trim() || "(no response)";
+    addMsg("assistant", text);
+    aiHistory.push({ role: "assistant", content: text });
+  } catch(err){
+    loading.remove();
+    addMsg("assistant error", "Request failed: " + err.message);
+    aiHistory.pop();
+  }
+}
+
+function sendFollowup(){
+  const q = aiFollowup.value.trim();
+  if (!q) return;
+  aiFollowup.value = "";
+  askAi(q, q);
+}
+aiFollowupBtn.addEventListener("click", sendFollowup);
+aiFollowup.addEventListener("keydown", e => { if (e.key === "Enter") sendFollowup(); });
 </script>
