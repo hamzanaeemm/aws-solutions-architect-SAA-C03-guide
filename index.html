@@ -182,7 +182,7 @@ tr.grp td{background:var(--surface2); font:800 14px var(--f-display); color:var(
     </div>
     <div class="controls">
       <button class="btn" id="recallBtn" aria-pressed="false">Recall mode</button>
-      <button class="btn" id="aiSettingsBtn" title="Set your Anthropic API key">AI settings</button>
+      <button class="btn" id="aiSettingsBtn" title="Set your xAI (Grok) API key">AI settings</button>
       <div class="legend"><span><span class="tag add">SAA+</span> added for the exam</span> <span><span class="tag upd">Updated</span> changed since your course</span> <span><span class="tag src">from …</span> merged from another file</span></div>
     </div>
   </div>
@@ -205,9 +205,9 @@ tr.grp td{background:var(--surface2); font:800 14px var(--f-display); color:var(
 
 <div id="aiKeyModal" class="ai-modal" hidden>
   <div class="ai-modal-card">
-    <h3>Anthropic API key</h3>
-    <p>This site has no backend, so your key is stored only in this browser's local storage and sent directly from your browser to Anthropic's API. Never share a key you don't want exposed this way.</p>
-    <input id="aiKeyInput" type="password" placeholder="sk-ant-...">
+    <h3>xAI (Grok) API key</h3>
+    <p>This site has no backend, so your key is stored only in this browser's local storage and sent directly from your browser to xAI's API. Never share a key you don't want exposed this way.</p>
+    <input id="aiKeyInput" type="password" placeholder="xai-...">
     <div class="ai-modal-actions">
       <button id="aiKeyClear" class="btn">Clear key</button>
       <button id="aiKeySave" class="btn">Save</button>
@@ -3989,8 +3989,8 @@ document.addEventListener("keydown", e => {
 });
 
 /* AI explain */
-const AI_KEY_STORAGE = "saa-guide-anthropic-key";
-const AI_MODEL = "claude-sonnet-5-5";
+const AI_KEY_STORAGE = "saa-guide-grok-key";
+const AI_MODEL = "grok-4";
 const selectBtn = document.getElementById("aiSelectBtn");
 const aiPanel = document.getElementById("aiPanel");
 const aiSelectedText = document.getElementById("aiSelectedText");
@@ -4068,29 +4068,26 @@ async function askAi(prompt, displayAsUser){
   const loading = addMsg("assistant ai-loading", "Thinking…");
   aiHistory.push({ role: "user", content: prompt });
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
+        "Authorization": "Bearer " + key
       },
       body: JSON.stringify({
         model: AI_MODEL,
-        max_tokens: 1024,
         messages: aiHistory
       })
     });
     const data = await res.json();
     loading.remove();
     if (!res.ok){
-      const msg = (data && data.error && data.error.message) || res.statusText;
+      const msg = (data && data.error && (data.error.message || data.error)) || res.statusText;
       addMsg("assistant error", "Error: " + msg);
       aiHistory.pop();
       return;
     }
-    const text = (data.content || []).map(c => c.text || "").join("\n").trim() || "(no response)";
+    const text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || "").trim() || "(no response)";
     addMsg("assistant", text);
     aiHistory.push({ role: "assistant", content: text });
   } catch(err){
