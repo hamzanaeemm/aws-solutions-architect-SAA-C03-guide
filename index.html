@@ -4048,7 +4048,7 @@ function openAiPanel(selectedText){
   aiBody.innerHTML = "";
   aiHistory = [];
   aiPanel.hidden = false;
-  askAi(`Explain this AWS SAA-C03 study note in detail, including why it matters for the exam and a concrete example:\n\n"${selectedText}"`, selectedText);
+  askAi(`Briefly explain this AWS SAA-C03 study note:\n\n"${selectedText}"`, selectedText);
 }
 aiPanelClose.addEventListener("click", () => { aiPanel.hidden = true; });
 
@@ -4076,7 +4076,10 @@ async function askAi(prompt, displayAsUser){
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents })
+      body: JSON.stringify({
+        contents,
+        systemInstruction: { parts: [{ text: "You are an AWS SAA-C03 tutor. Answer briefly: 2-4 short sentences in plain text, no headings or long lists. Mention the key exam takeaway only if relevant." }] }
+      })
     });
     const data = await res.json();
     loading.remove();
