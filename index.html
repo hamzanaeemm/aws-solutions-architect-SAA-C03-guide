@@ -100,6 +100,23 @@ section.tab{display:grid; gap:26px}
   .n.d0{max-width:none}
 }
 
+/* mind map as a top-down board: root on top, each main branch a column card that fills the width */
+.mm > .row{flex-direction:column; align-items:stretch}
+.mm > .row > .n.d0{align-self:center; max-width:none}
+.mm > .row > .kids{margin:14px 0 0; display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap:12px; align-items:start}
+.mm > .row > .kids::before{display:none}
+.mm > .row > .kids > .br{padding:10px; border:1px solid color-mix(in srgb, var(--c) 35%, var(--line)); border-radius:10px; background:color-mix(in srgb, var(--c) 4%, var(--surface))}
+.mm > .row > .kids > .br::before,.mm > .row > .kids > .br::after{display:none}
+.mm > .row > .kids .row{flex-direction:column; align-items:flex-start}
+.mm > .row > .kids .n{max-width:100%}
+.mm > .row > .kids .kids{margin:3px 0 0 12px}
+.mm > .row > .kids .kids::before{display:none}
+.mm > .row > .kids .kids > .br{padding:3px 0 3px 16px}
+.mm > .row > .kids .kids > .br::before{top:16px; width:16px}
+.mm > .row > .kids .kids > .br:first-child::after{top:0}
+.mm > .row > .kids .kids > .br:last-child::after{bottom:auto; height:16px}
+.mm > .row > .kids .kids > .br:only-child::after{display:block; top:0; height:16px}
+
 /* recall mode */
 body.recall .ans{filter:blur(6px); cursor:pointer; user-select:none; transition:filter .15s}
 body.recall .ans.shown{filter:none}
