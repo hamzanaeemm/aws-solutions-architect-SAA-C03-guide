@@ -115,6 +115,9 @@ const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function open(raw){
   const key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64(P.i) }, key, b64(P.c));
+  /* document.open() is ignored while this page is still parsing, and write() would then merge the guide into it */
+  if (document.readyState !== "complete") await new Promise(r => addEventListener("load", r, { once: true }));
+  clearInterval(window.rainTimer);
   document.open(); document.write(new TextDecoder().decode(pt)); document.close();
 }
 async function derive(pw){
