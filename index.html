@@ -4388,6 +4388,8 @@ function showTip(note, anchor, editing){
   savedTip.style.top = (r.bottom + window.scrollY + 6) + "px";
 }
 function hideTip(){ savedTip.hidden = true; tipNote = null; }
+/* showTip rebuilds the tip, detaching the clicked button, so keep its clicks from looking like outside clicks */
+savedTip.addEventListener("click", e => e.stopPropagation());
 
 document.addEventListener("click", e => {
   const icon = e.target.closest(".saved-note-icon, span.saved-note");
