@@ -2,7 +2,7 @@
 
 A single self-contained HTML study guide covering the AWS Certified Solutions Architect – Associate (SAA-C03) exam.
 
-Open [saa-c03-study-guide.html](saa-c03-study-guide.html) in any browser — no build step or dependencies required.
+Requires Node.js for the local server and build; no dependencies.
 
 ## Topics covered
 
@@ -24,10 +24,10 @@ Open [saa-c03-study-guide.html](saa-c03-study-guide.html) in any browser — no 
 
 ## Usage
 
-Clone the repo and open the HTML file directly, or download it and open it locally — it works offline.
+The published site is password protected: `index.html` is encrypted, and readable sources live only in the gitignored `src/` folder (backed up encrypted in `source.enc`).
 
-## Saved AI explanations
-
-Run `cp .env.example .env`, set `EXPLAIN_PASSWORD`, then `node server.js` and open http://localhost:8080.
-After an AI answer, click **💾 Save to page**. The explained text gets a dotted underline and a ⓘ icon; click either to see the explanation. Editing and deleting ask for the password.
-Explanations are stored in `explanations.json`. Commit it so the static site shows them read-only.
+1. `cp .env.example .env` and set `SITE_PASSWORD` (site login + encryption key, use 12+ characters) and `EXPLAIN_PASSWORD` (edit/delete saved explanations).
+2. Fresh clone? Run `node build.js --restore` to recreate `src/`.
+3. `node build.js` re-encrypts `index.html` and `source.enc` from `src/`. Commit and push; GitHub Pages serves the encrypted page.
+4. Saved AI explanations live in `notes.enc` (encrypted). The site itself adds, edits and deletes them by committing that file through the GitHub API: the first time on each device it asks for your `EXPLAIN_PASSWORD` and a fine-grained GitHub token (Contents: read and write, this repo only), which it stores encrypted in that browser. Run `git pull` before working locally so you pick up those commits.
+5. Changed `SITE_PASSWORD`? Run `OLD_SITE_PASSWORD=<old> node build.js` once to re-encrypt `notes.enc`.

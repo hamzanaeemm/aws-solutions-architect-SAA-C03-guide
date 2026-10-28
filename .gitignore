@@ -1,4 +1,4 @@
-notes.env
-explanations.json.tmp
 .env
-notes
+notes/
+src/
+*.tmp
