@@ -193,6 +193,15 @@ tr.grp td{background:var(--surface2); font:800 14px var(--f-display); color:var(
 .ai-key-guide ol{margin:8px 0 6px; padding-left:20px; display:grid; gap:4px}
 .ai-key-guide p{margin:0}
 .ai-modal-actions{display:flex; justify-content:flex-end; gap:8px}
+.ai-save{align-self:flex-start; font-size:12px; padding:4px 10px}
+.saved-note{text-decoration:underline dotted var(--accent) 2px; text-underline-offset:3px; cursor:help}
+.saved-note-icon{display:inline-block; margin-left:3px; font-size:11px; line-height:1; color:var(--accent); cursor:pointer; vertical-align:super}
+.saved-tip{position:absolute; z-index:65; max-width:min(380px, calc(100vw - 32px)); background:var(--surface); color:var(--ink); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.3); padding:10px 12px; font:14px/1.55 var(--f-body)}
+.saved-tip-text{white-space:pre-wrap}
+.saved-tip textarea{width:100%; box-sizing:border-box; min-height:110px; padding:8px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--ink); font:14px/1.5 var(--f-body)}
+.saved-tip-actions{display:flex; justify-content:flex-end; gap:6px; margin-top:8px}
+.saved-tip-actions .btn{font-size:12px; padding:4px 10px}
+.saved-tip-err{color:var(--upd); font-size:13px; margin-top:6px}
 
 /* theme toggle + responsive header */
 .theme-btn{min-width:42px}
@@ -323,6 +332,20 @@ try { const t = localStorage.getItem("saa-guide-theme"); if (t) document.documen
       <button id="aiKeySave" class="btn">Save</button>
     </div>
   </div>
+</div>
+
+<div id="savedTip" class="saved-tip" hidden></div>
+
+<div id="pwModal" class="ai-modal" hidden>
+  <form class="ai-modal-card" id="pwForm">
+    <h3>Password required</h3>
+    <p>Enter the <code>EXPLAIN_PASSWORD</code> from your <code>.env</code> file.</p>
+    <input id="pwInput" type="password" autocomplete="current-password">
+    <div class="ai-modal-actions">
+      <button type="button" id="pwCancel" class="btn">Cancel</button>
+      <button type="submit" class="btn">OK</button>
+    </div>
+  </form>
 </div>
 
 <nav class="tabs" aria-label="Topics and services">
@@ -4214,6 +4237,7 @@ async function askAi(prompt, displayAsUser){
     const cand = data.candidates && data.candidates[0];
     const text = (cand && cand.content && cand.content.parts || []).map(p => p.text || "").join("").trim() || "(no response)";
     addMsg("assistant", text);
+    addSaveBtn(text);
     aiHistory.push({ role: "assistant", content: text });
   } catch(err){
     loading.remove();
@@ -4230,6 +4254,157 @@ function sendFollowup(){
 }
 aiFollowupBtn.addEventListener("click", sendFollowup);
 aiFollowup.addEventListener("keydown", e => { if (e.key === "Enter") sendFollowup(); });
+
+/* saved explanations: stored by server.js in explanations.json, shown as ⓘ tooltips on the explained text.
+   On static hosting (no server) explanations.json is loaded read-only. */
+const savedTip = document.getElementById("savedTip");
+const pwModal = document.getElementById("pwModal");
+const pwInput = document.getElementById("pwInput");
+let savedNotes = [];
+let aiSelectionSection = "";
+let tipNote = null;
+
+document.addEventListener("mouseup", () => {
+  const sel = window.getSelection();
+  const node = sel && sel.rangeCount ? sel.getRangeAt(0).commonAncestorContainer : null;
+  const el = node && (node.nodeType === 1 ? node : node.parentElement);
+  const sec = el && el.closest("section.tab");
+  if (sec && !aiPanel.contains(el)) aiSelectionSection = sec.id;
+}, true);
+
+function askPassword(){
+  return new Promise(resolve => {
+    pwInput.value = ""; pwModal.hidden = false; pwInput.focus();
+    const done = v => { pwModal.hidden = true; pwForm.onsubmit = null; pwCancel.onclick = null; resolve(v); };
+    const pwForm = document.getElementById("pwForm"), pwCancel = document.getElementById("pwCancel");
+    pwForm.onsubmit = e => { e.preventDefault(); done(pwInput.value); };
+    pwCancel.onclick = () => done(null);
+  });
+}
+
+async function api(method, path, body){
+  const res = await fetch("api/explanations" + path, {
+    method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined
+  });
+  let data = null; try { data = await res.json(); } catch(e){}
+  if (!res.ok) throw new Error((data && data.error) || `Server returned ${res.status} — is server.js running?`);
+  return data;
+}
+
+function addSaveBtn(explanation){
+  const b = document.createElement("button");
+  b.className = "btn ai-save"; b.textContent = "💾 Save to page";
+  const text = aiSelectedText.textContent, section = aiSelectionSection;
+  b.addEventListener("click", async () => {
+    b.disabled = true; b.textContent = "Saving…";
+    try {
+      savedNotes.push(await api("POST", "", { text, explanation, section }));
+      renderSavedNotes();
+      b.textContent = "✓ Saved";
+    } catch(err){ b.disabled = false; b.textContent = "💾 Save to page"; addMsg("assistant error", "Save failed: " + err.message); }
+  });
+  aiBody.appendChild(b);
+  aiBody.scrollTop = aiBody.scrollHeight;
+}
+
+/* Wrap the first occurrence of note.text inside root; falls back to an icon after the smallest containing element. */
+function anchorNote(root, note){
+  const want = note.text.replace(/\s+/g, " ");
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: n => n.parentElement.closest(".saved-note, script, style") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+  });
+  for (let n; (n = walker.nextNode());){
+    const i = n.nodeValue.indexOf(want);
+    if (i < 0) continue;
+    const range = document.createRange();
+    range.setStart(n, i); range.setEnd(n, i + want.length);
+    const span = document.createElement("span");
+    span.className = "saved-note";
+    range.surroundContents(span);
+    return span;
+  }
+  const bare = want.replace(/\s/g, "");
+  let best = null;
+  root.querySelectorAll("*").forEach(el => {
+    if (el.classList.contains("saved-note-icon")) return;
+    if (el.textContent.replace(/\s|ⓘ/g, "").includes(bare) && (!best || best.contains(el))) best = el;
+  });
+  return best;
+}
+
+function renderSavedNotes(){
+  document.querySelectorAll(".saved-note-icon").forEach(i => i.remove());
+  document.querySelectorAll("span.saved-note").forEach(s => s.replaceWith(...s.childNodes));
+  document.querySelectorAll(".saved-note").forEach(s => s.classList.remove("saved-note"));
+  savedNotes.forEach(note => {
+    const roots = [document.getElementById(note.section), document.querySelector("main")].filter(Boolean);
+    let el = null;
+    for (const r of roots) if ((el = anchorNote(r, note))) break;
+    if (!el) return;
+    el.classList.add("saved-note");
+    const icon = document.createElement("span");
+    icon.className = "saved-note-icon"; icon.textContent = "ⓘ"; icon.title = "Saved explanation";
+    icon.dataset.noteId = note.id; el.dataset.noteId = note.id;
+    (el.matches("tr, ul, ol, table, tbody") ? el.lastElementChild : el).append(icon);
+  });
+}
+
+function showTip(note, anchor, editing){
+  tipNote = note;
+  savedTip.innerHTML = "";
+  const err = document.createElement("div"); err.className = "saved-tip-err";
+  const actions = document.createElement("div"); actions.className = "saved-tip-actions";
+  const btn = (label, fn) => { const b = document.createElement("button"); b.className = "btn"; b.textContent = label; b.onclick = fn; actions.appendChild(b); };
+  if (editing){
+    const ta = document.createElement("textarea"); ta.value = note.explanation;
+    savedTip.appendChild(ta);
+    btn("Cancel", () => showTip(note, anchor, false));
+    btn("Save", async () => {
+      const password = await askPassword(); if (password === null) return;
+      try {
+        Object.assign(note, await api("PUT", "/" + note.id, { explanation: ta.value, password }));
+        showTip(note, anchor, false);
+      } catch(e){ err.textContent = e.message; }
+    });
+  } else {
+    const t = document.createElement("div"); t.className = "saved-tip-text"; t.textContent = note.explanation;
+    savedTip.appendChild(t);
+    btn("Edit", () => showTip(note, anchor, true));
+    btn("Delete", async () => {
+      if (!confirm("Delete this saved explanation?")) return;
+      const password = await askPassword(); if (password === null) return;
+      try {
+        await api("DELETE", "/" + note.id, { password });
+        savedNotes = savedNotes.filter(n => n !== note);
+        hideTip(); renderSavedNotes();
+      } catch(e){ err.textContent = e.message; }
+    });
+  }
+  savedTip.append(actions, err);
+  savedTip.hidden = false;
+  const r = anchor.getBoundingClientRect();
+  const left = Math.min(r.left + window.scrollX, window.scrollX + document.documentElement.clientWidth - savedTip.offsetWidth - 16);
+  savedTip.style.left = Math.max(16, left) + "px";
+  savedTip.style.top = (r.bottom + window.scrollY + 6) + "px";
+}
+function hideTip(){ savedTip.hidden = true; tipNote = null; }
+
+document.addEventListener("click", e => {
+  const icon = e.target.closest(".saved-note-icon, span.saved-note");
+  if (icon){
+    const note = savedNotes.find(n => n.id === icon.dataset.noteId);
+    if (note){ e.preventDefault(); (tipNote === note && !savedTip.hidden) ? hideTip() : showTip(note, icon, false); }
+    return;
+  }
+  if (!savedTip.contains(e.target) && !pwModal.contains(e.target)) hideTip();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && pwModal.hidden) hideTip(); });
+
+(async () => {
+  try { savedNotes = await api("GET", ""); }
+  catch(e){ try { const r = await fetch("explanations.json"); if (r.ok) savedNotes = await r.json(); } catch(e2){} }
+  renderSavedNotes();
+})();
 </script>
 <script src="learn.js"></script>
 <script src="learn-data-fund.js"></script>

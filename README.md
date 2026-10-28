@@ -25,3 +25,9 @@ Open [saa-c03-study-guide.html](saa-c03-study-guide.html) in any browser — no 
 ## Usage
 
 Clone the repo and open the HTML file directly, or download it and open it locally — it works offline.
+
+## Saved AI explanations
+
+Run `cp .env.example .env`, set `EXPLAIN_PASSWORD`, then `node server.js` and open http://localhost:8080.
+After an AI answer, click **💾 Save to page**. The explained text gets a dotted underline and a ⓘ icon; click either to see the explanation. Editing and deleting ask for the password.
+Explanations are stored in `explanations.json`. Commit it so the static site shows them read-only.

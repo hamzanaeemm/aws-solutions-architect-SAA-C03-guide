@@ -1,0 +1,9 @@
+[
+  {
+    "id": "172ff2a9-a866-4c8a-81cb-c8fcf7a51728",
+    "text": "Outposts\tAWS hardware in your data center\tExtend AWS on-premises, low latency to local systems, data must stay on site",
+    "explanation": "AWS Outposts allows you to run native AWS services and infrastructure directly within your own data center. It's designed for applications that require extremely low latency access to on-premises systems or have strict data residency requirements, preventing data from leaving your facility. Outposts effectively extends your AWS cloud environment into your local premises, managed with the same AWS tools and APIs.",
+    "section": "basics",
+    "created": "2026-10-28T14:34:52.767Z"
+  }
+]
