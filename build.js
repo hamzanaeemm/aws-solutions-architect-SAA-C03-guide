@@ -72,9 +72,10 @@ if (PASSWORD.length < 12) console.warn("Warning: SITE_PASSWORD is short. Anyone 
 /* "</script" inside inlined code would end the tag early */
 const inline = code => code.replace(/<\/script/gi, "<\\/script");
 
-let html = fs.readFileSync(path.join(SRC, "index.html"), "utf8");
-html = html.replace(/<script src="([^"]+)"><\/script>/g, (_, src) =>
+/* Inline local scripts so each published page is one encrypted file. */
+const bundle = html => html.replace(/<script src="([^"]+)"><\/script>/g, (_, src) =>
   `<script>\n${inline(fs.readFileSync(path.join(SRC, src), "utf8"))}\n</script>`);
+let html = bundle(fs.readFileSync(path.join(SRC, "index.html"), "utf8"));
 /* notes.enc: { s: salt, n: iterations, i, c }. The browser re-encrypts i/c with the same key and keeps s/n. */
 const NOTES_FILE = path.join(ROOT, "notes.enc");
 let notesFile = null;
@@ -105,7 +106,8 @@ const remote = require("child_process").execSync("git remote get-url origin", { 
 const repo = remote.replace(/\.git$/, "").match(/github\.com[:/](.+\/.+)$/)[1];
 const branch = require("child_process").execSync("git rev-parse --abbrev-ref HEAD", { cwd: ROOT, encoding: "utf8" }).trim();
 const SITE = { repo, branch, iterations: ITERATIONS, notesKey: notesKey.toString("base64"), editSalt: editSalt.toString("base64"), editCheck };
-html = html.replace("<script>", `<script>window.SITE = ${JSON.stringify(SITE)};</script>\n<script>`);
+const withSite = html => html.replace("<script>", `<script>window.SITE = ${JSON.stringify(SITE)};</script>\n<script>`);
+html = withSite(html);
 html = html.replace(/<a class="btn" href="\/logout"/, `<a class="btn" href="#" onclick="try{localStorage.removeItem('saa-site-key')}catch(e){}location.reload();return false"`);
 
 /* All pages of one build share a salt, so the key a browser remembers after logging in on one page opens the others. */
@@ -150,7 +152,7 @@ form.addEventListener("submit", async e => {
 const page = wrapPage(html);
 fs.writeFileSync(path.join(ROOT, "index.html"), page);
 const subpages = fs.readdirSync(SRC).filter(f => f.endsWith(".html") && f !== "index.html" && f !== "login.html");
-for (const f of subpages) fs.writeFileSync(path.join(ROOT, f), wrapPage(fs.readFileSync(path.join(SRC, f), "utf8")));
+for (const f of subpages) fs.writeFileSync(path.join(ROOT, f), wrapPage(withSite(bundle(fs.readFileSync(path.join(SRC, f), "utf8")))));
 
 const files = Object.fromEntries(listFiles(SRC).map(f => [path.relative(SRC, f).split(path.sep).join("/"), fs.readFileSync(f).toString("base64")]));
 fs.writeFileSync(path.join(ROOT, "source.enc"), JSON.stringify(encrypt(Buffer.from(JSON.stringify(files)))) + "\n");
