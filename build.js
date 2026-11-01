@@ -1,5 +1,6 @@
 /* Publishes the password-protected site from src/ (which is gitignored and never pushed).
      node build.js            -> index.html (encrypted site for GitHub Pages) + source.enc (encrypted backup of src/)
+                                 + every other src/*.html page (except login.html), encrypted under the same name
      node build.js --restore  -> recreates src/ from source.enc, e.g. on a fresh clone
    Saved explanations live in notes.enc, which the published site reads and commits itself through the GitHub API.
    Its key is derived from SITE_PASSWORD and its own salt, so it stays the same across builds. After changing
@@ -30,9 +31,8 @@ const PASSWORD = process.env.SITE_PASSWORD || "";
 if (!PASSWORD){ console.error("SITE_PASSWORD is not set in .env"); process.exit(1); }
 const EDIT_PASSWORD = process.env.EXPLAIN_PASSWORD || "";
 
-function encrypt(buf, password = PASSWORD){
-  const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12);
-  const key = crypto.pbkdf2Sync(password, salt, ITERATIONS, 32, "sha256");
+function encrypt(buf, password = PASSWORD, salt = crypto.randomBytes(16), key = crypto.pbkdf2Sync(password, salt, ITERATIONS, 32, "sha256")){
+  const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   const ct = Buffer.concat([cipher.update(buf), cipher.final(), cipher.getAuthTag()]);
   return { s: salt.toString("base64"), i: iv.toString("base64"), n: ITERATIONS, c: ct.toString("base64") };
@@ -108,8 +108,12 @@ const SITE = { repo, branch, iterations: ITERATIONS, notesKey: notesKey.toString
 html = html.replace("<script>", `<script>window.SITE = ${JSON.stringify(SITE)};</script>\n<script>`);
 html = html.replace(/<a class="btn" href="\/logout"/, `<a class="btn" href="#" onclick="try{localStorage.removeItem('saa-site-key')}catch(e){}location.reload();return false"`);
 
-const unlock = `<script>
-const P = ${JSON.stringify(encrypt(Buffer.from(html, "utf8")))};
+/* All pages of one build share a salt, so the key a browser remembers after logging in on one page opens the others. */
+const pageSalt = crypto.randomBytes(16);
+const pageKey = crypto.pbkdf2Sync(PASSWORD, pageSalt, ITERATIONS, 32, "sha256");
+const loginHtml = fs.readFileSync(path.join(SRC, "login.html"), "utf8").replace('<form method="post" action="/login">', '<form id="loginForm">');
+const wrapPage = html => loginHtml.replace("</body>", `<script>
+const P = ${JSON.stringify(encrypt(Buffer.from(html, "utf8"), PASSWORD, pageSalt, pageKey))};
 const KEY = "saa-site-key";
 const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 async function open(raw){
@@ -140,14 +144,15 @@ form.addEventListener("submit", async e => {
     err.textContent = "ACCESS DENIED"; input.disabled = false; input.value = ""; input.focus();
   }
 });
-</script>`;
+</script>
+</body>`);
 
-let page = fs.readFileSync(path.join(SRC, "login.html"), "utf8");
-page = page.replace('<form method="post" action="/login">', '<form id="loginForm">');
-page = page.replace("</body>", unlock + "\n</body>");
+const page = wrapPage(html);
 fs.writeFileSync(path.join(ROOT, "index.html"), page);
+const subpages = fs.readdirSync(SRC).filter(f => f.endsWith(".html") && f !== "index.html" && f !== "login.html");
+for (const f of subpages) fs.writeFileSync(path.join(ROOT, f), wrapPage(fs.readFileSync(path.join(SRC, f), "utf8")));
 
 const files = Object.fromEntries(listFiles(SRC).map(f => [path.relative(SRC, f).split(path.sep).join("/"), fs.readFileSync(f).toString("base64")]));
 fs.writeFileSync(path.join(ROOT, "source.enc"), JSON.stringify(encrypt(Buffer.from(JSON.stringify(files)))) + "\n");
 
-console.log(`index.html (${(page.length / 1024).toFixed(0)} KB) and source.enc (${Object.keys(files).length} files) written. Commit and push them (and notes.enc).`);
+console.log(`index.html (${(page.length / 1024).toFixed(0)} KB) and source.enc (${Object.keys(files).length} files) written${subpages.length ? ", plus " + subpages.join(", ") : ""}. Commit and push them (and notes.enc).`);
