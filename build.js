@@ -47,7 +47,7 @@ function decrypt(p, password = PASSWORD){
 function listFiles(dir){
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
     const full = path.join(dir, e.name);
-    if (e.name.endsWith(".tmp") || e.name === "explanations.json") return [];
+    if (e.name.endsWith(".tmp") || e.name === "explanations.json" || e.name === "slides") return [];
     return e.isDirectory() ? listFiles(full) : [full];
   });
 }
@@ -148,6 +148,23 @@ form.addEventListener("submit", async e => {
 });
 </script>
 </body>`);
+
+/* Lesson slides: src/slides/<name>.webp (gitignored, made from notes/*.docx) -> img/s-<name>.enc under the notes key,
+   the same format as note images. The IV is derived from the content, so unchanged slides give identical files. */
+const slideNames = new Set();
+for (const f of fs.readdirSync(SRC).filter(f => f.endsWith(".html") && f !== "login.html"))
+  for (const m of fs.readFileSync(path.join(SRC, f), "utf8").matchAll(/data-slide="([\w-]+)"/g)) slideNames.add(m[1]);
+fs.mkdirSync(path.join(ROOT, "img"), { recursive: true });
+let slidesWritten = 0;
+for (const name of slideNames){
+  const buf = fs.readFileSync(path.join(SRC, "slides", name + ".webp"));
+  const iv = crypto.createHmac("sha256", notesKey).update(buf).digest().subarray(0, 12);
+  const c = crypto.createCipheriv("aes-256-gcm", notesKey, iv);
+  const out = Buffer.concat([iv, c.update(buf), c.final(), c.getAuthTag()]);
+  const file = path.join(ROOT, "img", `s-${name}.enc`);
+  if (!fs.existsSync(file) || !fs.readFileSync(file).equals(out)){ fs.writeFileSync(file, out); slidesWritten++; }
+}
+if (slideNames.size) console.log(`${slideNames.size} lesson slides (${slidesWritten} updated)`);
 
 const page = wrapPage(html);
 fs.writeFileSync(path.join(ROOT, "index.html"), page);
